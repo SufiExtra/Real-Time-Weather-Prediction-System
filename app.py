@@ -13,6 +13,10 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
 
 
+# =============================
+# App Title
+# =============================
+
 st.title("🌦 Weather Prediction System")
 st.write("Predict tomorrow's weather using Machine Learning and Weather API")
 
@@ -44,7 +48,7 @@ X_test_scaled = scaler.transform(X_test)
 
 
 # =============================
-# Models
+# Machine Learning Models
 # =============================
 
 models = {
@@ -58,9 +62,11 @@ accuracies = {}
 trained_models = {}
 
 for name, model in models.items():
+
     if name in ["KNN", "Logistic Regression"]:
         model.fit(X_train_scaled, y_train)
         pred = model.predict(X_test_scaled)
+
     else:
         model.fit(X_train, y_train)
         pred = model.predict(X_test)
@@ -68,12 +74,38 @@ for name, model in models.items():
     accuracies[name] = accuracy_score(y_test, pred)
     trained_models[name] = model
 
+
 best_model_name = max(accuracies, key=accuracies.get)
 best_model = trained_models[best_model_name]
 
 
 # =============================
-# API Function
+# Get Coordinates From City Name
+# =============================
+
+def get_coordinates(city):
+    url = (
+        "https://geocoding-api.open-meteo.com/v1/search"
+        f"?name={city}"
+        "&count=1"
+        "&language=en"
+        "&format=json"
+    )
+
+    response = requests.get(url)
+    data = response.json()
+
+    if "results" not in data:
+        return None, None
+
+    latitude = data["results"][0]["latitude"]
+    longitude = data["results"][0]["longitude"]
+
+    return latitude, longitude
+
+
+# =============================
+# Get Real-Time Weather Data
 # =============================
 
 def get_today_weather(latitude, longitude):
@@ -103,43 +135,59 @@ def get_today_weather(latitude, longitude):
 # User Input
 # =============================
 
-st.subheader("📍 Enter Location Coordinates")
+st.subheader("📍 Enter Location Name")
 
-latitude = st.number_input("Enter Latitude", value=33.91)
-longitude = st.number_input("Enter Longitude", value=72.49)
+city = st.text_input("Enter City Name", value="Hazro")
 
 if st.button("Predict Tomorrow Weather"):
 
-    if latitude < -90 or latitude > 90:
-        st.error("Invalid latitude. Latitude must be between -90 and 90.")
-
-    elif longitude < -180 or longitude > 180:
-        st.error("Invalid longitude. Longitude must be between -180 and 180.")
+    if city.strip() == "":
+        st.error("Please enter a city name.")
 
     else:
-        today_weather = get_today_weather(latitude, longitude)
+        latitude, longitude = get_coordinates(city)
 
-        today_data = pd.DataFrame([{
-            "precipitation": today_weather["precipitation"],
-            "temp_max": today_weather["temp_max"],
-            "temp_min": today_weather["temp_min"],
-            "wind": today_weather["wind"],
-            "month": today_weather["month"],
-            "day": today_weather["day"]
-        }])
+        if latitude is None or longitude is None:
+            st.error("City not found. Please enter a valid city name.")
 
-        if best_model_name in ["KNN", "Logistic Regression"]:
-            today_data = scaler.transform(today_data)
+        else:
+            st.success(f"Location Found: {city}")
+            st.write(f"Latitude: {latitude}")
+            st.write(f"Longitude: {longitude}")
 
-        prediction = best_model.predict(today_data)[0]
+            today_weather = get_today_weather(latitude, longitude)
 
-        st.success(f"🌤 Predicted Tomorrow Weather: {prediction}")
-        st.info(f"Best Model Used: {best_model_name}")
-        
+            today_data = pd.DataFrame([{
+                "precipitation": today_weather["precipitation"],
+                "temp_max": today_weather["temp_max"],
+                "temp_min": today_weather["temp_min"],
+                "wind": today_weather["wind"],
+                "month": today_weather["month"],
+                "day": today_weather["day"]
+            }])
 
-        st.subheader("Today's Weather Data From API")
-        st.write(today_weather)
+            if best_model_name in ["KNN", "Logistic Regression"]:
+                today_data = scaler.transform(today_data)
 
+            prediction = best_model.predict(today_data)[0]
+
+            st.success(f"🌤 Predicted Tomorrow Weather: {prediction}")
+            st.info(f"Best Model Used: {best_model_name}")
+
+            st.subheader("Today's Weather Data From API")
+            st.write(today_weather)
+
+
+# =============================
+# Model Accuracy Comparison
+# =============================
 
 st.subheader("📊 Model Accuracy Comparison")
-st.bar_chart(pd.DataFrame.from_dict(accuracies, orient="index", columns=["Accuracy"]))
+
+accuracy_df = pd.DataFrame.from_dict(
+    accuracies,
+    orient="index",
+    columns=["Accuracy"]
+)
+
+st.bar_chart(accuracy_df)
